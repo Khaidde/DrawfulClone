@@ -17,7 +17,7 @@ const TITLE_TIME = 15;
 var timerTime = 0;
 var timer;
 
-const port = 5000;
+const port = process.env.PORT || 5000;
 
 app.set('port', port);
 app.use('/static', express.static(__dirname + '/static'));
