@@ -1,0 +1,3 @@
+Bug:
+- When a player disconnects from the game resulting in a game with fewer than 3 players,
+	data from the drawing canvas in the prompt drawing state is still saved (FIXED)
