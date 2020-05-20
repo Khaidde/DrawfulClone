@@ -39,6 +39,10 @@ class GameState {
 
 class LobbyState extends GameState {
 	onTextReceive(socket, name) {
+		if (totalPlayers >= MAX_PLAYERS) {
+			socket.emit("connectionError", "Server is full...");
+			return;
+		}
 		players[socket.id] = {
 			username: name,
 			score: 0,
@@ -46,6 +50,10 @@ class LobbyState extends GameState {
 		}
 	}
 	onImageReceive(socket, image) {
+		if (totalPlayers >= MAX_PLAYERS) {
+			socket.emit("connectionError", "Server is full...");
+			return;
+		}
 		var player = players[socket.id];
 		player.profilePic = image;
 
@@ -183,16 +191,21 @@ io.on('connection', function(socket) {
 				gameState = new LobbyState();
 				io.emit("switchScreen", "MainScreen");
 				clearInterval(timer);
+				delete players[socket.id];
+				socket.broadcast.emit("playerList", JSON.stringify(players));
 			} else if (!(gameState instanceof LobbyState || gameState instanceof ReceivePromptDrawingsState)) {
 				var currentPlayerKey = Object.keys(players).find(function (player) {
 					return !player.hasBeenJudged;
 				});
+				delete players[socket.id];
+				socket.broadcast.emit("playerList", JSON.stringify(players));
 				if (currentPlayerKey == socket.id) {
 					ReceiveTitleSuggestionState.startTitleSuggestionPhase();
 				}
+			} else {
+				delete players[socket.id];
+				socket.broadcast.emit("playerList", JSON.stringify(players));
 			}
-			delete players[socket.id];
-			socket.broadcast.emit("playerList", JSON.stringify(players));
 		}
   	});
 });

@@ -515,6 +515,11 @@ class ProfileInfoScreen extends Screen {
 		this.drawingCanvas.render(canvasW / 2 - this.drawingCanvas.size / 2, 50);
 		this.textInput.render(canvasW / 2 - this.textInput.boxWidth / 2, 650);
 		this.enterInfoButton.render(canvasW / 2 - this.enterInfoButton.width / 2, 720)
+
+		if (connectionError != "") {
+			ctx.fillStyle = "#FF0000";
+			ctx.fillText(connectionError, canvasW / 2 - ctx.measureText(connectionError).width / 2, 800);
+		}
 	}
 	onMouseDown(mouseX, mouseY) {
 		this.drawingCanvas.addCanvasDrawClick(mouseX, mouseY, false);
