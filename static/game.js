@@ -768,6 +768,7 @@ class ChooseTitleState extends State {
 		var self = this;
 		var counter = 0;
 		Object.values(players).forEach(function (player) {
+			if (player.username == players[socketID].username) return;
 			if (player.titleSuggestion == undefined)  {
 				self.listOfTitles[counter] = player.prompt;
 			} else {
@@ -887,7 +888,7 @@ class ResultState extends State {
 	}
 	render() {
 		ctx.fillStyle = "#FF0000";
-		ctx.fillText("WIP, This screen is not done", 0, 0);
+		ctx.fillText("WIP, This screen is not done...", 100, 100);
 	}
 	renderList(key, counter, offsetY) {
 
