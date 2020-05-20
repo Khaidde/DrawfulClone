@@ -674,6 +674,14 @@ class SuggestionState extends State {
 	constructor() {
 		super();
 		this.textInput = new TextInput("", "Enter a Title", 500, 25, "#30608c", 30);
+
+		this.enterTitleButton = new Button("Submit", 30, "#FFFFFF", 100, 50, "#000000");
+		this.enterTitleButton.screen = this;
+		this.enterTitleButton.onButtonClick = function(screen) {
+			if (screen.textInput.text != "") {
+				screen.textInput.sendTextToServer();
+			}
+		}
 	}
 	render() {
 		this.showcasingPlayerKey = Object.keys(players).find(function (player) {
@@ -692,16 +700,34 @@ class SuggestionState extends State {
 		} else {
 			x = currentScreen.scrollArea.width;
 		}
+		var imgSize = 500;
 		if (this.showcasingPlayerKey == socketID) {
 			ctx.font = "30px " + DEFAULT_FONT;
-			ctx.fillText("Waiting for other players...", x, 90);
+			var waitText = "Waiting for other players...";
+			ctx.fillText(waitText, x + imgSize / 2 - ctx.measureText(waitText).width / 2, 70);
+			ctx.drawImage(showcasingPlayer.promptDrawing, x, 120, imgSize, imgSize);
 		} else {
-			ctx.font = "50px " + DEFAULT_FONT;
-			ctx.fillText(text, x, 90);
-			this.textInput.render(x, 120);
+			if (players[socketID].isSuggestingTitle) {
+				ctx.font = "50px " + DEFAULT_FONT;
+				ctx.fillText(text, x, 70);
+				this.textInput.render(x, 100);
+				this.enterTitleButton.render(x + imgSize / 2 - this.enterTitleButton.width / 2, 160);
+				ctx.drawImage(showcasingPlayer.promptDrawing, x, 220, imgSize, imgSize);
+			} else {
+				ctx.font = "30px " + DEFAULT_FONT;
+				ctx.fillStyle = "#FFFFFF";
+				text = "Title Submitted...";
+				distFromScroll = (canvasW - currentScreen.scrollArea.width) / 2 - ctx.measureText(text).width / 2
+				if (distFromScroll > 0) {
+					ctx.fillText(text, currentScreen.scrollArea.width + distFromScroll, canvasH / 2);
+				}
+			}
 		}
-		var imgSize = 500;
-		ctx.drawImage(showcasingPlayer.promptDrawing, x, 150, imgSize, imgSize);
+
+		if (timerTime == 0) {
+			this.textInput.sendTextToServer();
+			players[socketID].isWriting = false;
+		}
 	}
 	renderList(key, counter, offsetY) {
 		if (players[key].isSuggestingTitle) {
@@ -710,19 +736,161 @@ class SuggestionState extends State {
 		}
 	}
 	onMouseDown(mouseX, mouseY) {
+		if (!players[socketID].isSuggestingTitle) return
 		if (this.showcasingPlayerKey != socketID) {
 			this.textInput.onMouseDown(mouseX, mouseY);
 		}
+		this.enterTitleButton.onMouseDown(mouseX, mouseY);
+	}
+	onMouseMove(mouseX, mouseY) {
+		if (!players[socketID].isSuggestingTitle) return
+		this.enterTitleButton.onMouseMove(mouseX, mouseY);
 	}
 	onKeyDown(keyevent) {
+		if (!players[socketID].isSuggestingTitle) return
 		if (this.showcasingPlayerKey != socketID) {
 			this.textInput.onKeyDown(keyevent);
 		}
 	}
 	onKeyPress(keyevent) {
+		if (!players[socketID].isSuggestingTitle) return
 		if (this.showcasingPlayerKey != socketID) {
 			this.textInput.onKeyPress(keyevent);
 		}
+	}
+}
+
+class ChooseTitleState extends State {
+	constructor() {
+		super();
+		this.listOfTitles = [];
+
+		var self = this;
+		var counter = 0;
+		Object.values(players).forEach(function (player) {
+			if (player.titleSuggestion == undefined)  {
+				self.listOfTitles[counter] = player.prompt;
+			} else {
+				self.listOfTitles[counter] = player.titleSuggestion;
+			}
+			counter++;
+		});
+
+		this.listOfTitles.sort(function (playerA, playerB) {
+			var hashA = self.hashUsername(playerA);
+			var hashB = self.hashUsername(playerB);
+
+			if (hashA < hashB) {
+				return -1;
+			} else if (hashA > hashB) {
+				return 1;
+			}
+			return 1;
+		});
+
+		this.titleButtons = [];
+		Object.values(this.listOfTitles).forEach(function (title) {
+			self.titleButtons[title] = new Button(title, 30, "#FFFFFF", 500, 50, "#000000");
+			self.titleButtons[title].screen = self;
+			self.titleButtons[title].onButtonClick = function(screen) {
+				socket.emit("textInput", title);
+			}
+		});
+	}
+	hashUsername(name) {
+		var hash = 67;
+		for (var i = 0; i < name.length; i ++) {
+			hash = (hash * name[i].charCodeAt(0)) % 127;
+		}
+		return hash;
+	}
+	render() {
+		this.showcasingPlayerKey = Object.keys(players).find(function (player) {
+			return !player.hasBeenJudged;
+		});
+		var showcasingPlayer = players[this.showcasingPlayerKey];
+
+		ctx.fillStyle = "#000000";
+		ctx.fillText("Time Left: " + timerTime, 5, 50);
+
+		var distFromScroll = (canvasW - currentScreen.scrollArea.width) / 2 - 500 / 2;
+		var x;
+		if (distFromScroll > 0) {
+			x = currentScreen.scrollArea.width + distFromScroll;
+		} else {
+			x = currentScreen.scrollArea.width;
+		}
+		if (this.showcasingPlayerKey == socketID) {
+			ctx.font = "30px " + DEFAULT_FONT;
+			var waitText = "Waiting for title selection...";
+			ctx.fillText(waitText, x + 500 / 2 - ctx.measureText(waitText).width / 2, 70);
+
+			var counter = 0;
+			Object.values(this.listOfTitles).forEach(function (title) {
+				ctx.fillText(title, x + 500 / 2 - ctx.measureText(title).width / 2, 110 + 40 * counter);
+				counter++;
+			});
+		} else {
+			if (players[socketID].isChoosingTitle) {
+				var counter = 0;
+				Object.values(this.titleButtons).forEach(function (button) {
+					button.render(x, 90 + (button.height + 10) * counter);
+					counter++;
+				});
+
+				var text = "Select the correct title";
+				ctx.fillStyle = "#000000";
+				ctx.fillText(text, x + 500 / 2 - ctx.measureText(text).width / 2, 50);
+			} else {
+				ctx.font = "30px " + DEFAULT_FONT;
+				ctx.fillStyle = "#FFFFFF";
+				var text = "Selected Title Submitted...";
+				distFromScroll = (canvasW - currentScreen.scrollArea.width) / 2 - ctx.measureText(text).width / 2
+				if (distFromScroll > 0) {
+					ctx.fillText(text, currentScreen.scrollArea.width + distFromScroll, canvasH / 2);
+				}
+			}
+		}
+
+		if (timerTime == 0) {
+			var randomIndex = Math.ceil(Math.random() * this.listOfTitles.length);
+			socket.emit("textInput", this.listOfTitles[randomIndex]);
+			players[socketID].isChoosingTitle = false;
+		}
+	}
+	renderList(key, counter, offsetY) {
+		if (players[key].isChoosingTitle) {
+			ctx.fillStyle = "#FFFFFF";
+			ctx.fillText("Selecting...", 123, 165 + counter * 120 - offsetY);
+		}
+	}
+	onMouseDown(mouseX, mouseY) {
+		if (!players[socketID].isChoosingTitle) return;
+		Object.values(this.titleButtons).forEach(function (button) {
+			button.onMouseDown(mouseX, mouseY);
+		});
+	}
+	onMouseMove(mouseX, mouseY) {
+		if (!players[socketID].isChoosingTitle) return;
+		Object.values(this.titleButtons).forEach(function (button) {
+			button.onMouseMove(mouseX, mouseY);
+		});
+	}
+}
+
+class ResultState extends State {
+	constructor() {
+		super();
+		Object.values(players).forEach(function (player) {
+			console.log(player.username + "::" + player.score);
+		});
+	}
+	render() {
+		ctx.fillStyle = "#FF0000";
+		ctx.fillText("WIP, This screen is not done", 0, 0);
+	}
+	renderList(key, counter, offsetY) {
+
 	}
 }
 
@@ -767,6 +935,12 @@ class MainScreen extends Screen {
 				break;
 			case "SuggestionState":
 				this.currentState = new SuggestionState();
+				break;
+			case "ChooseTitleState":
+				this.currentState = new ChooseTitleState();
+				break;
+			case "ResultState":
+				this.currentState = new ResultState();
 				break;
 		}
 	}

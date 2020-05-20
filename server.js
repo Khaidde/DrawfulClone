@@ -10,12 +10,18 @@ var io = socketIO(server);
 
 const FPS = 60;
 const MAX_PLAYERS = 8;
-const MIN_PLAYERS = 3;
+const MIN_PLAYERS = 2;
 
-const DRAWING_TIME = 10;
-const TITLE_TIME = 15;
+const DRAWING_TIME = 100;
+const TITLE_TIME = 80;
+const CHOOSE_TITLE_TIME = 20;
+
+const GUESSED_CORRECTLY_SCORE = 1000;
+const TRICKED_OTHER_PLAYER_SCORE = 500;
+
 var timerTime = 0;
 var timer;
+var showcasingPlayer;
 
 const port = process.env.PORT || 5000;
 
@@ -102,46 +108,49 @@ class ReceivePromptDrawingsState extends GameState {
 		var player = players[socket.id];
 		player.isDrawing = false;
 		player.promptDrawing = image;
+		io.emit("playerList", JSON.stringify(players));
 
 		if (!Object.values(players).some(function (player) {
 			return player.isDrawing;
 		})) {
 			ReceiveTitleSuggestionState.startTitleSuggestionPhase();
 		}
-		io.emit("playerList", JSON.stringify(players));
 	}
 }
 
 class ReceiveTitleSuggestionState extends GameState {
 	onTextReceive(socket, text) {
+		var player = players[socket.id];
 		player.isSuggestingTitle = false;
 		player.titleSuggestion = text;
+		io.emit("playerList", JSON.stringify(players));
 
 		if (!Object.values(players).some(function (player) {
 			return player.isSuggestingTitle;
 		})) {
-			io.emit("gameState", "SuggestionState");
+			ChooseTitleState.startChooseTitlePhase();
 		}
-		io.emit("playerList", JSON.stringify(players));
 	}
 	static startTitleSuggestionPhase() {
 		clearInterval(timer);
 
-		var currentPlayerKey = Object.keys(players).find(function (player) {
+		var showcasingPlayerKey = Object.keys(players).find(function (player) {
 			return !player.hasBeenJudged;
 		});
-		if (currentPlayerKey == undefined) {
+		if (showcasingPlayerKey == undefined) {
 			//End the game TODO
 			return;
 		}
-		var currentPlayer = players[currentPlayerKey];
+		showcasingPlayer = players[showcasingPlayerKey];
 
 		gameState = new ReceiveTitleSuggestionState();
 		io.emit("gameState", "SuggestionState");
 		Object.keys(players).forEach(function (key) {
 			players[key].isSuggestingTitle = true;
+			players[key].titleSuggestion = undefined;
+			players[key].titleSelection = undefined;
 		});
-		currentPlayer.isSuggestingTitle = false;
+		showcasingPlayer.isSuggestingTitle = false;
 		io.emit("playerList", JSON.stringify(players));
 		timerTime = TITLE_TIME;
 		io.emit("timer", timerTime);
@@ -150,10 +159,74 @@ class ReceiveTitleSuggestionState extends GameState {
 				timerTime--;
 				io.emit("timer", timerTime);
 			} else {
-				//Start title selection phase TODO
-				clearInterval(timer);
+				ChooseTitleState.startChooseTitlePhase();
 			}
 		}, 1000);
+	}
+}
+
+class ChooseTitleState extends GameState {
+	onTextReceive(socket, text) {
+		var player = players[socket.id];
+		player.isChoosingTitle = false;
+		player.titleSelection = text;
+
+		Object.values(players).forEach(function(playerT) {
+			if (playerT.username == showcasingPlayer.username) {
+				if (showcasingPlayer.prompt == player.titleSelection) {
+					showcasingPlayer.score += GUESSED_CORRECTLY_SCORE;
+					player.score += GUESSED_CORRECTLY_SCORE;
+				}
+			} else {
+				if (playerT.titleSuggestion == player.titleSelection) {
+					playerT.score += TRICKED_OTHER_PLAYER_SCORE;
+				}
+			}
+		});
+		io.emit("playerList", JSON.stringify(players));
+
+		if (!Object.values(players).some(function (player) {
+			return player.isChoosingTitle;
+		})) {
+			ResultDisplayState.startResultDisplayPhase();
+		}
+	}
+	static startChooseTitlePhase() {
+		clearInterval(timer);
+
+		gameState = new ChooseTitleState();
+		io.emit("gameState", "ChooseTitleState");
+		Object.keys(players).forEach(function (key) {
+			players[key].isChoosingTitle = true;
+		});
+		showcasingPlayer.isChoosingTitle = false;
+		io.emit("playerList", JSON.stringify(players));
+		timerTime = CHOOSE_TITLE_TIME;
+		io.emit("timer", timerTime);
+		timer = setInterval(function() {
+			if (timerTime > 0) {
+				timerTime--;
+				io.emit("timer", timerTime);
+			} else {
+				ResultDisplayState.startResultDisplayPhase();
+			}
+		}, 1000);
+	}
+	hashUsername(name) {
+		var hash = 67;
+		for (var i = 0; i < name.length; i ++) {
+			hash = (hash * name[i].charCodeAt(0)) % 255;
+		}
+		return hash;
+	}
+}
+
+class ResultDisplayState extends GameState {
+	static startResultDisplayPhase() {
+		clearInterval(timer);
+
+		gameState = new ResultDisplayState();
+		io.emit("gameState", "ResultState");
 	}
 }
 
