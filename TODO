@@ -1,8 +1,10 @@
 Bug:
 - When a player disconnects from the game resulting in a game with fewer than 3 players,
 	data from the drawing canvas in the prompt drawing state is still saved (FIXED)
+- Certain brown colors are transparent (FIXED)
+- Leaving during the lobby as the first person in the list causes errors (Potentially fixed? => Needs more testing)
 
 TODO
-- Prevent game from generating duplicate prompts for two people
+- Prevent game from generating duplicate prompts for two people (Potentially fixed? => Needs more testing)
 - Detect title guesses which are the same as other people
 - Test if program functions correctly when timer reaches 0s

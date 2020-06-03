@@ -10,7 +10,7 @@ var io = socketIO(server);
 
 const FPS = 60;
 const MAX_PLAYERS = 8;
-const MIN_PLAYERS = 2;
+const MIN_PLAYERS = 3;
 
 const DRAWING_TIME = 100;
 const TITLE_TIME = 80;
@@ -27,6 +27,7 @@ const port = process.env.PORT || 5000;
 
 app.set('port', port);
 app.use('/static', express.static(__dirname + '/static'));
+app.use('/images', express.static(__dirname + '/images'));
 app.get('/', function(request, response) {
   response.sendFile(path.join(__dirname, 'index.html'));
 });
@@ -82,12 +83,22 @@ class LobbyState extends GameState {
 	static startRound() {
 		gameState = new ReceivePromptDrawingsState();
 		io.emit("gameState", "DrawingState");
+		var usedPrompts = [];
 		Object.keys(players).forEach(function (key) {
 			players[key].hasBeenJudged = false;
 			players[key].isDrawing = true;
 			var prompts = promptFile.prompts;
-			var randomIndex = Math.ceil(Math.random() * prompts.length);
-			players[key].prompt = prompts[randomIndex];
+			var prompt;
+			var matchingPrompt = true;
+			while (matchingPrompt) {
+				var randomIndex = Math.ceil(Math.random() * prompts.length);
+				prompt = prompts[randomIndex];
+				matchingPrompt = Object.values(usedPrompts).some(function(usedPrompt) {
+					return prompt == usedPrompt;
+				});
+			}
+			players[key].prompt = prompt;
+			usedPrompts.push(players[key].prompt);
 		});
 		io.emit("playerList", JSON.stringify(players));
 		timerTime = DRAWING_TIME;
@@ -261,12 +272,14 @@ io.on('connection', function(socket) {
 				Object.keys(players).forEach(function (key) {
 					players[key].isReady = false;
 				});
-				gameState = new LobbyState();
-				io.emit("switchScreen", "MainScreen");
+				if (!(gameState instanceof LobbyState)) {
+					gameState = new LobbyState();
+					io.emit("switchScreen", "MainScreen");
+				}
 				clearInterval(timer);
 				delete players[socket.id];
 				socket.broadcast.emit("playerList", JSON.stringify(players));
-			} else if (!(gameState instanceof LobbyState || gameState instanceof ReceivePromptDrawingsState)) {
+			} else if (!(gameState instanceof LobbyState) && !(gameState instanceof ReceivePromptDrawingsState)) {
 				var currentPlayerKey = Object.keys(players).find(function (player) {
 					return !player.hasBeenJudged;
 				});

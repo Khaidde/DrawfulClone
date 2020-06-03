@@ -9,7 +9,7 @@ const PRIMARY_COLORS = [
 	"#0ac832",
 	"#ff80ff",
 	"#c73b32",
-	"#995f3d",
+	"#b36c49",
 	"#6a45ff"
 ];
 
@@ -20,7 +20,7 @@ const SECONDARY_COLORS = [
 	"#067a1b",
 	"#b35bb3",
 	"#7a2420",
-	"#4d2f1f",
+	"#804d34",
 	"#4a30b3"
 ];
 
@@ -814,7 +814,8 @@ class ChooseTitleState extends State {
 		ctx.fillStyle = "#000000";
 		ctx.fillText("Time Left: " + timerTime, 5, 50);
 
-		var distFromScroll = (canvasW - currentScreen.scrollArea.width) / 2 - 500 / 2;
+		var imgSize = 500;
+		var distFromScroll = (canvasW - currentScreen.scrollArea.width) / 2 - imgSize / 2;
 		var x;
 		if (distFromScroll > 0) {
 			x = currentScreen.scrollArea.width + distFromScroll;
@@ -824,29 +825,34 @@ class ChooseTitleState extends State {
 		if (this.showcasingPlayerKey == socketID) {
 			ctx.font = "30px " + DEFAULT_FONT;
 			var waitText = "Waiting for title selection...";
-			ctx.fillText(waitText, x + 500 / 2 - ctx.measureText(waitText).width / 2, 70);
+			ctx.fillText(waitText, x + imgSize / 2 - ctx.measureText(waitText).width / 2, 70);
 
 			var counter = 0;
 			Object.values(this.listOfTitles).forEach(function (title) {
-				ctx.fillText(title, x + 500 / 2 - ctx.measureText(title).width / 2, 110 + 40 * counter);
+				ctx.fillText(title, x + imgSize / 2 - ctx.measureText(title).width / 2, 110 + 40 * counter);
 				counter++;
 			});
+			ctx.drawImage(showcasingPlayer.promptDrawing, x, 110 + 40 * counter, imgSize, imgSize);
 		} else {
 			if (players[socketID].isChoosingTitle) {
 				var counter = 0;
+				var buttonHeight;
 				Object.values(this.titleButtons).forEach(function (button) {
-					button.render(x, 90 + (button.height + 10) * counter);
+					buttonHeight = button.height;
+					button.render(x, 90 + (buttonHeight + 10) * counter);
 					counter++;
 				});
 
 				var text = "Select the correct title";
 				ctx.fillStyle = "#000000";
-				ctx.fillText(text, x + 500 / 2 - ctx.measureText(text).width / 2, 50);
+				ctx.fillText(text, x + imgSize / 2 - ctx.measureText(text).width / 2, 50);
+
+				ctx.drawImage(showcasingPlayer.promptDrawing, x, 90 + buttonHeight * counter, imgSize, imgSize);
 			} else {
 				ctx.font = "30px " + DEFAULT_FONT;
 				ctx.fillStyle = "#FFFFFF";
 				var text = "Selected Title Submitted...";
-				distFromScroll = (canvasW - currentScreen.scrollArea.width) / 2 - ctx.measureText(text).width / 2
+				distFromScroll = (canvasW - currentScreen.scrollArea.width) / 2 - ctx.measureText(text).width / 2;
 				if (distFromScroll > 0) {
 					ctx.fillText(text, currentScreen.scrollArea.width + distFromScroll, canvasH / 2);
 				}
