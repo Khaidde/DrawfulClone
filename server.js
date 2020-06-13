@@ -15,6 +15,7 @@ const MIN_PLAYERS = 3;
 const DRAWING_TIME = 100;
 const TITLE_TIME = 80;
 const CHOOSE_TITLE_TIME = 20;
+const SCOREBOARD_DISPLAY_TIME = 5;
 
 const GUESSED_CORRECTLY_SCORE = 1000;
 const TRICKED_OTHER_PLAYER_SCORE = 500;
@@ -82,7 +83,6 @@ class LobbyState extends GameState {
 	}
 	static startRound() {
 		gameState = new ReceivePromptDrawingsState();
-		io.emit("gameState", "DrawingState");
 		var usedPrompts = [];
 		Object.keys(players).forEach(function (key) {
 			players[key].hasBeenJudged = false;
@@ -111,6 +111,7 @@ class LobbyState extends GameState {
 			 	ReceiveTitleSuggestionState.startTitleSuggestionPhase();
 			}
 		}, 1000);
+		io.emit("gameState", "DrawingState");
 	}
 }
 
@@ -132,6 +133,21 @@ class ReceivePromptDrawingsState extends GameState {
 class ReceiveTitleSuggestionState extends GameState {
 	onTextReceive(socket, text) {
 		var player = players[socket.id];
+
+		var showcasingPlayerKey = Object.keys(players).find(function (key) {
+			return !players[key].hasBeenJudged;
+		});
+		var duplicateTitleSuggestion = Object.keys(players).find(function (player) {
+			if (players[player].titleSuggestion != undefined && players[player].titleSuggestion == text) {
+				return true;
+			}
+			return players[showcasingPlayerKey].prompt == text;
+		});
+		if (duplicateTitleSuggestion != undefined) {
+			socket.emit("duplicateTitle");
+			return;
+		}
+
 		player.isSuggestingTitle = false;
 		player.titleSuggestion = text;
 		io.emit("playerList", JSON.stringify(players));
@@ -145,17 +161,22 @@ class ReceiveTitleSuggestionState extends GameState {
 	static startTitleSuggestionPhase() {
 		clearInterval(timer);
 
-		var showcasingPlayerKey = Object.keys(players).find(function (player) {
-			return !player.hasBeenJudged;
+		var showcasingPlayerKey = Object.keys(players).find(function (key) {
+			return !players[key].hasBeenJudged;
 		});
 		if (showcasingPlayerKey == undefined) {
-			//End the game TODO
+			Object.keys(players).forEach(function (key) {
+				players[key].isReady = false;
+				players[key].score = 0;
+			});
+			gameState = new LobbyState();
+			io.emit("switchScreen", "MainScreen");
+			io.emit("playerList", JSON.stringify(players));
 			return;
 		}
 		showcasingPlayer = players[showcasingPlayerKey];
 
 		gameState = new ReceiveTitleSuggestionState();
-		io.emit("gameState", "SuggestionState");
 		Object.keys(players).forEach(function (key) {
 			players[key].isSuggestingTitle = true;
 			players[key].titleSuggestion = undefined;
@@ -173,6 +194,7 @@ class ReceiveTitleSuggestionState extends GameState {
 				ChooseTitleState.startChooseTitlePhase();
 			}
 		}, 1000);
+		io.emit("gameState", "SuggestionState");
 	}
 }
 
@@ -187,10 +209,20 @@ class ChooseTitleState extends GameState {
 				if (showcasingPlayer.prompt == player.titleSelection) {
 					showcasingPlayer.score += GUESSED_CORRECTLY_SCORE;
 					player.score += GUESSED_CORRECTLY_SCORE;
+
+					if (showcasingPlayer.resultMapping == undefined) {
+						showcasingPlayer.resultMapping = [];
+					}
+					showcasingPlayer.resultMapping.push(player.username);
 				}
 			} else {
 				if (playerT.titleSuggestion == player.titleSelection) {
 					playerT.score += TRICKED_OTHER_PLAYER_SCORE;
+
+					if (playerT.resultMapping == undefined) {
+						playerT.resultMapping = [];
+					}
+					playerT.resultMapping.push(player.username);
 				}
 			}
 		});
@@ -206,7 +238,6 @@ class ChooseTitleState extends GameState {
 		clearInterval(timer);
 
 		gameState = new ChooseTitleState();
-		io.emit("gameState", "ChooseTitleState");
 		Object.keys(players).forEach(function (key) {
 			players[key].isChoosingTitle = true;
 		});
@@ -222,6 +253,7 @@ class ChooseTitleState extends GameState {
 				ResultDisplayState.startResultDisplayPhase();
 			}
 		}, 1000);
+		io.emit("gameState", "ChooseTitleState");
 	}
 	hashUsername(name) {
 		var hash = 67;
@@ -232,12 +264,86 @@ class ChooseTitleState extends GameState {
 	}
 }
 
+var resultDisplayingPlayer;
 class ResultDisplayState extends GameState {
 	static startResultDisplayPhase() {
 		clearInterval(timer);
 
 		gameState = new ResultDisplayState();
+		Object.keys(players).forEach(function (key) {
+			if (players[key].resultMapping == undefined) {
+				players[key].isDisplayingResults = false;
+			} else {
+				if (players[key].username == showcasingPlayer.username) {
+					players[key].isDisplayingResults = false;
+				} else {
+					players[key].isDisplayingResults = true;
+				}
+			}
+		});
+		io.emit("playerList", JSON.stringify(players));
+
+		resultDisplayingPlayer = Object.values(players).find((player) => {return player.isDisplayingResults;});
+		if (resultDisplayingPlayer == undefined) {
+			resultDisplayingPlayer = showcasingPlayer;
+		}
+		timerTime = resultDisplayingPlayer.resultMapping.length + 2;
+		io.emit("timer", timerTime);
+		timer = setInterval(function() {
+			ResultDisplayState.evaluateResults();
+		}, 1000);
+
 		io.emit("gameState", "ResultState");
+	}
+	static evaluateResults() {
+		if (timerTime > 0) {
+			timerTime--;
+		} else {
+			if (resultDisplayingPlayer != undefined && resultDisplayingPlayer.username == showcasingPlayer.username) {
+				Object.values(players).forEach(function (player) {
+					player.resultMapping = undefined;
+				});
+				var showcasingPlayerKey = Object.keys(players).find(function (key) {
+					return !players[key].hasBeenJudged;
+				});
+				players[showcasingPlayerKey].hasBeenJudged = true;
+				io.emit("playerList", JSON.stringify(players));
+				ScoreboardState.startScoreboardPhase();
+			} else {
+				resultDisplayingPlayer.isDisplayingResults = false;
+				io.emit("playerList", JSON.stringify(players));
+				resultDisplayingPlayer = Object.values(players).find((player) => {return player.isDisplayingResults;});
+				if(resultDisplayingPlayer == undefined) {
+					resultDisplayingPlayer = showcasingPlayer;
+					if (showcasingPlayer.resultMapping == undefined) {
+						timerTime = 2;
+						io.emit("timer", timerTime);
+						return;
+					}
+				}
+				timerTime = resultDisplayingPlayer.resultMapping.length + 2;
+			}
+		}
+		io.emit("timer", timerTime);
+	}
+}
+
+class ScoreboardState extends GameState {
+	static startScoreboardPhase() {
+		clearInterval(timer);
+
+		gameState = new ScoreboardState();
+		timerTime = SCOREBOARD_DISPLAY_TIME;
+		io.emit("timer", timerTime);
+		timer = setInterval(function() {
+			if (timerTime > 0) {
+				timerTime--;
+				io.emit("timer", timerTime);
+			} else {
+				ReceiveTitleSuggestionState.startTitleSuggestionPhase();
+			}
+		}, 1000);
+		io.emit("gameState", "ScoreboardState");
 	}
 }
 
@@ -280,8 +386,8 @@ io.on('connection', function(socket) {
 				delete players[socket.id];
 				socket.broadcast.emit("playerList", JSON.stringify(players));
 			} else if (!(gameState instanceof LobbyState) && !(gameState instanceof ReceivePromptDrawingsState)) {
-				var currentPlayerKey = Object.keys(players).find(function (player) {
-					return !player.hasBeenJudged;
+				var currentPlayerKey = Object.keys(players).find(function (key) {
+					return !players[key].hasBeenJudged;
 				});
 				delete players[socket.id];
 				socket.broadcast.emit("playerList", JSON.stringify(players));

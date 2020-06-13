@@ -2,9 +2,14 @@ Bug:
 - When a player disconnects from the game resulting in a game with fewer than 3 players,
 	data from the drawing canvas in the prompt drawing state is still saved (FIXED)
 - Certain brown colors are transparent (FIXED)
+- Prevent game from generating duplicate prompts for two people (Potentially done? => Needs more testing)
 - Leaving during the lobby as the first person in the list causes errors (Potentially fixed? => Needs more testing)
+- Server hangs after each subsequent round and doesn't continue to the result state (Potentially fixed?)
+- Weird stuff happens when people don't decide to guess a title (FIXED)
+- Handle what happens when a client reloads the page with the same socket.id -> make them disappear or disconnect them (Potentially Fixed?)
 
 TODO
-- Prevent game from generating duplicate prompts for two people (Potentially fixed? => Needs more testing)
-- Detect title guesses which are the same as other people
+- Detect title guesses which are the same as other people (DONE)
 - Test if program functions correctly when timer reaches 0s
+
+- Delete code which automatically sends images and answers to the server

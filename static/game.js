@@ -86,6 +86,11 @@ socket.on("gameState", function(gameState) {
 socket.on("timer", function(time) {
 	timerTime = time;
 });
+var tooSimilarTitle = 0;
+socket.on("duplicateTitle", function() {
+	tooSimilarTitle = 100;
+	currentScreen.textInput.text = "";
+});
 
 class Button {
 	constructor(text, fontSize, textColor, width, height, buttonColor) {
@@ -684,8 +689,8 @@ class SuggestionState extends State {
 		}
 	}
 	render() {
-		this.showcasingPlayerKey = Object.keys(players).find(function (player) {
-			return !player.hasBeenJudged;
+		this.showcasingPlayerKey = Object.keys(players).find(function (key) {
+			return !players[key].hasBeenJudged;
 		});
 		var showcasingPlayer = players[this.showcasingPlayerKey];
 
@@ -717,16 +722,23 @@ class SuggestionState extends State {
 				ctx.font = "30px " + DEFAULT_FONT;
 				ctx.fillStyle = "#FFFFFF";
 				text = "Title Submitted...";
-				distFromScroll = (canvasW - currentScreen.scrollArea.width) / 2 - ctx.measureText(text).width / 2
+				distFromScroll = (canvasW - currentScreen.scrollArea.width) / 2 - ctx.measureText(text).width / 2;
 				if (distFromScroll > 0) {
 					ctx.fillText(text, currentScreen.scrollArea.width + distFromScroll, canvasH / 2);
 				}
 			}
 		}
 
-		if (timerTime == 0) {
+		if (timerTime == 0 && players[socketID].isSuggestingTitle) {
 			this.textInput.sendTextToServer();
-			players[socketID].isWriting = false;
+			players[socketID].isSuggestingTitle = false;
+		}
+
+		if (tooSimilarTitle > 0) {
+			ctx.fillStyle = "#FF0000";
+			var tooSimilarText = "Your title is too similar to another title!"
+			ctx.fillText(tooSimilarText, x + imgSize / 2 - ctx.measureText(tooSimilarText).width / 2, canvasH / 2);
+			tooSimilarTitle--;
 		}
 	}
 	renderList(key, counter, offsetY) {
@@ -806,8 +818,8 @@ class ChooseTitleState extends State {
 		return hash;
 	}
 	render() {
-		this.showcasingPlayerKey = Object.keys(players).find(function (player) {
-			return !player.hasBeenJudged;
+		this.showcasingPlayerKey = Object.keys(players).find(function (key) {
+			return !players[key].hasBeenJudged;
 		});
 		var showcasingPlayer = players[this.showcasingPlayerKey];
 
@@ -859,8 +871,8 @@ class ChooseTitleState extends State {
 			}
 		}
 
-		if (timerTime == 0) {
-			var randomIndex = Math.ceil(Math.random() * this.listOfTitles.length);
+		if (timerTime == 0 && players[socketID].isChoosingTitle) {
+			var randomIndex = Math.floor(Math.random() * this.listOfTitles.length);
 			socket.emit("textInput", this.listOfTitles[randomIndex]);
 			players[socketID].isChoosingTitle = false;
 		}
@@ -888,16 +900,137 @@ class ChooseTitleState extends State {
 class ResultState extends State {
 	constructor() {
 		super();
-		Object.values(players).forEach(function (player) {
-			console.log(player.username + "::" + player.score);
+		this.showcasingPlayerKey = Object.keys(players).find(function (key) {
+			return !players[key].hasBeenJudged;
+		});
+		this.updateDisplayPlayer();
+		this.lastTimer = timerTime;
+	}
+	render() {
+		var imgSize = 500;
+		var distFromScroll = (canvasW - currentScreen.scrollArea.width) / 2 - imgSize / 2;
+		var x;
+		if (distFromScroll > 0) {
+			x = currentScreen.scrollArea.width + distFromScroll;
+		} else {
+			x = currentScreen.scrollArea.width;
+		}
+		ctx.fillStyle = "#000000";
+		ctx.fillRect(x, 10, imgSize, 100);
+		ctx.font = "30px " + DEFAULT_FONT;
+		ctx.fillStyle = "#FFFFFF";
+		var text;
+		if (this.resultDisplayingPlayer.username == players[this.showcasingPlayerKey].username) {
+			text = "\"" + this.resultDisplayingPlayer.prompt + "\"";
+		} else {
+			text = "\"" + this.resultDisplayingPlayer.titleSuggestion + "\"";
+		}
+		ctx.fillText(text, x + imgSize / 2 - ctx.measureText(text).width / 2, 45);
+		if (timerTime >= 0 && this.resultDisplayingPlayer.resultMapping != undefined) {
+			var total = Math.min(this.resultDisplayingPlayer.resultMapping.length - timerTime + 2, this.resultDisplayingPlayer.resultMapping.length);
+			const spacing = 70;
+			var firstRowTotal = Math.min(total, 4);
+			var firstRowRelativeX = (firstRowTotal - 1) / 2 * spacing;
+			var secondRowTotal = total % 4;
+			var secondRowRelativeX = (secondRowTotal - 1) / 2 * spacing;
+			var counter = 0;
+			var nameText;
+			ctx.font = "20px " + DEFAULT_FONT;
+			ctx.fillStyle = "#FFFFFF";
+			Object.values(this.resultDisplayingPlayer.resultMapping).forEach(function (nameText) {
+				var current = Object.values(players).find(function (player) {
+					return player.username == nameText;
+				});
+				if (counter >= total) return;
+				if (counter < 4) {
+					var x0 = x + imgSize / 2 - firstRowRelativeX + counter * spacing;
+					ctx.fillText(nameText, x0 - ctx.measureText(nameText).width / 2, 200);
+					ctx.drawImage(current.profilePic, x0 - 50 / 2, 130, 50, 50);
+				} else {
+					var x0 = x + imgSize / 2 - secondRowRelativeX + (counter - 4) * spacing;
+					ctx.fillText(nameText, x0 - ctx.measureText(nameText).width / 2, 280);
+					ctx.drawImage(current.profilePic, x0 - 50 / 2, 210, 50, 50);
+				}
+				counter++;
+			});
+		}
+		if (timerTime <= 1){
+			ctx.font = "30px " + DEFAULT_FONT;
+			var text;
+			if (this.resultDisplayingPlayer.username == players[this.showcasingPlayerKey].username) {
+				text = "Actual Title";
+				if (this.resultDisplayingPlayer.resultMapping == undefined) {
+					ctx.fillStyle = "#FFFFFF";
+					var noGuessesText = "No one guessed correctly!";
+					ctx.fillText(noGuessesText, x + imgSize / 2 - ctx.measureText(noGuessesText).width / 2, 200);
+				}
+			} else {
+				text = "Written by: " + this.resultDisplayingPlayer.username;
+			}
+			ctx.fillText(text, x + imgSize / 2 - ctx.measureText(text).width / 2, 100);
+		}
+		if(this.lastTimer != timerTime) {
+			if (this.lastTimer < timerTime) {
+				this.resultDisplayingPlayer.isDisplayingResults = false;
+				this.updateDisplayPlayer();
+			}
+			this.lastTimer = timerTime;
+		}
+		ctx.drawImage(players[this.showcasingPlayerKey].promptDrawing, x, 300, imgSize, imgSize);
+	}
+	updateDisplayPlayer() {
+		this.resultDisplayingPlayer = Object.values(players).find((player) => {return player.isDisplayingResults;});
+		if (this.resultDisplayingPlayer == undefined) {
+			this.showcasingPlayerKey = Object.keys(players).find(function (key) {
+				return !players[key].hasBeenJudged;
+			});
+			this.resultDisplayingPlayer = players[this.showcasingPlayerKey];
+		}
+	}
+}
+
+class ScoreboardState extends State {
+	constructor (){
+		super();
+		this.listOfPlayers = [];
+
+		var self = this;
+		var counter = 0;
+		Object.keys(players).forEach(function (key) {
+			self.listOfPlayers[counter] = players[key];
+			counter++;
+		});
+
+		this.listOfPlayers.sort(function (playerA, playerB) {
+			return playerB.score - playerA.score;
 		});
 	}
 	render() {
-		ctx.fillStyle = "#FF0000";
-		ctx.fillText("WIP, This screen is not done...", 100, 100);
-	}
-	renderList(key, counter, offsetY) {
+		var imgSize = 500;
+		var distFromScroll = (canvasW - currentScreen.scrollArea.width) / 2 - imgSize / 2;
+		var x;
+		if (distFromScroll > 0) {
+			x = currentScreen.scrollArea.width + distFromScroll;
+		} else {
+			x = currentScreen.scrollArea.width;
+		}
+		ctx.fillStyle = "#000000";
+		ctx.fillRect(x, 10, imgSize, 100);
+		ctx.font = "30px " + DEFAULT_FONT;
+		ctx.fillStyle = "#FFFFFF";
+		var text = "Scoreboard";
+		ctx.fillText(text, x + imgSize / 2 - ctx.measureText(text).width / 2, 60);
 
+		var counter = 0;
+		ctx.font = "20px " + DEFAULT_FONT;
+
+
+		Object.values(this.listOfPlayers).forEach(function (player) {
+			ctx.drawImage(player.profilePic, x, 130 + counter * 85, 50, 50);
+			ctx.fillText(player.username, x + 60, 160 + counter * 85);
+			ctx.fillText("Score: " + player.score, x + 60, 180 + counter * 85);
+			counter++;
+		});
 	}
 }
 
@@ -939,15 +1072,31 @@ class MainScreen extends Screen {
 				break;
 			case "DrawingState":
 				this.currentState = new DrawingState();
+				//this.currentState.drawingCanvas.sendImageToServer();
 				break;
 			case "SuggestionState":
 				this.currentState = new SuggestionState();
+				/*
+				if (players[socketID].isSuggestingTitle) {
+					socket.emit("textInput", players[socketID].username + ":" + Math.floor(Math.random() * 10));
+				}*/
 				break;
 			case "ChooseTitleState":
 				this.currentState = new ChooseTitleState();
+				/*
+				if (players[socketID].isChoosingTitle) {
+					var size = this.currentState.listOfTitles.length;
+					//var title = this.currentState.listOfTitles[0];
+					var title = this.currentState.listOfTitles[Math.floor(Math.random() * size)];
+					console.log("Selection=" + title);
+					socket.emit("textInput", title);
+				}*/
 				break;
 			case "ResultState":
 				this.currentState = new ResultState();
+				break;
+			case "ScoreboardState":
+				this.currentState = new ScoreboardState();
 				break;
 		}
 	}
